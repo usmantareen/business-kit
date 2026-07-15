@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useDocumentStore } from "@/src/lib/stores/document-store"
 import { useCustomerStore } from "@/src/lib/stores/customer-store"
 import { useSettingsStore } from "@/src/lib/stores/settings-store"
-import type { DocumentType, Document, Item, Customer, CompanyInfo, DocumentStatus, PaymentMethod } from "@/src/types"
+import type { DocumentType, Document, Item, Customer, CompanyInfo, DocumentStatus, PaymentMethod, PaymentRecord } from "@/src/types"
 import { DocTypeLabel, generateDocNumber, getDefaultNumberingConfig, CurrencySymbols, DOCUMENT_STATUSES } from "@/src/types"
 import type { Product } from "@/src/types"
 import { generateId, now, formatCurrency, formatNumber } from "@/src/lib/formatters"
@@ -266,6 +266,15 @@ export function DocumentBuilder({ docType, documentId }: DocumentBuilderProps) {
   const [signature, setSignature] = useState("")
   const [stamp, setStamp] = useState("")
 
+  const [documentDiscount, setDocumentDiscount] = useState(0)
+  const [documentDiscountType, setDocumentDiscountType] = useState<"percentage" | "fixed">("percentage")
+  const [docPayments, setDocPayments] = useState<PaymentRecord[]>([])
+
+  const [newPayDate, setNewPayDate] = useState("")
+  const [newPayAmount, setNewPayAmount] = useState(0)
+  const [newPayMethod, setNewPayMethod] = useState("")
+  const [newPayNotes, setNewPayNotes] = useState("")
+
   const [showSignatureDialog, setShowSignatureDialog] = useState(false)
   const sigRef = useRef<SignatureCanvas>(null)
 
@@ -317,6 +326,9 @@ export function DocumentBuilder({ docType, documentId }: DocumentBuilderProps) {
         setTerms(doc.terms)
         setSignature(doc.signature)
         setStamp(doc.stamp)
+        setDocumentDiscount(doc.documentDiscount || 0)
+        setDocumentDiscountType(doc.documentDiscountType || "percentage")
+        setDocPayments(doc.payments || [])
         return
       }
     }
@@ -374,12 +386,20 @@ export function DocumentBuilder({ docType, documentId }: DocumentBuilderProps) {
     const sVal = Math.round(s * 100) / 100
     const dVal = Math.round(d * 100) / 100
     const tVal = Math.round(t * 100) / 100
-    const gVal = Math.round((sVal - dVal + tVal + shipping + additionalCharges) * 100) / 100
+    let docDisc = 0
+    if (documentDiscount > 0) {
+      if (documentDiscountType === "percentage") {
+        docDisc = Math.round(sVal * (documentDiscount / 100) * 100) / 100
+      } else {
+        docDisc = documentDiscount
+      }
+    }
+    const gVal = Math.round((sVal - dVal + tVal + shipping + additionalCharges - docDisc) * 100) / 100
     setSubtotal(sVal)
     setDiscountTotal(dVal)
     setTaxTotal(tVal)
     setGrandTotal(gVal)
-  }, [items, shipping, additionalCharges])
+  }, [items, shipping, additionalCharges, documentDiscount, documentDiscountType])
 
   useEffect(() => { computeTotals() }, [computeTotals])
 
@@ -529,6 +549,9 @@ export function DocumentBuilder({ docType, documentId }: DocumentBuilderProps) {
         currencySymbol,
         numberFormat: settings?.numberFormat || "indian",
         payment: { method: paymentMethod, details: paymentDetails, upiId },
+        payments: docPayments,
+        documentDiscount,
+        documentDiscountType,
         notes,
         terms,
         signature,
@@ -844,6 +867,27 @@ export function DocumentBuilder({ docType, documentId }: DocumentBuilderProps) {
                   onChange={(e) => setAdditionalCharges(toFiniteNumber(e.target.value))}
                 />
               </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Doc Discount</span>
+                <div className="flex items-center gap-0.5">
+                  <input
+                    className="w-20 h-7 rounded border border-input bg-transparent px-2 text-sm text-right tabular-nums"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={documentDiscount || ""}
+                    onChange={(e) => setDocumentDiscount(toFiniteNumber(e.target.value))}
+                  />
+                  <button
+                    type="button"
+                    className="w-6 h-7 text-[10px] font-medium rounded border border-input bg-transparent hover:bg-accent"
+                    onClick={() => setDocumentDiscountType(documentDiscountType === "percentage" ? "fixed" : "percentage")}
+                    title={documentDiscountType === "percentage" ? "Percentage" : "Fixed"}
+                  >
+                    {documentDiscountType === "percentage" ? "%" : "$"}
+                  </button>
+                </div>
+              </div>
               <Separator />
               <div className="flex items-center justify-between text-base font-semibold">
                 <span>Grand Total</span>
@@ -926,6 +970,83 @@ export function DocumentBuilder({ docType, documentId }: DocumentBuilderProps) {
               <div className="text-sm text-muted-foreground">Scan this QR code to pay via UPI</div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Payments Received</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {docPayments.length > 0 && (
+            <div className="space-y-2">
+              {docPayments.map((p) => (
+                <div key={p.id} className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium text-green-600">{currencySymbol}{p.amount.toFixed(2)}</span>
+                    <span className="text-muted-foreground">{p.date}</span>
+                    {p.method && <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{p.method}</span>}
+                    {p.notes && <span className="text-xs text-muted-foreground truncate max-w-[200px]">{p.notes}</span>}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setDocPayments((prev) => prev.filter((pp) => pp.id !== p.id))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <div className="text-sm font-medium text-right">
+                Total Received: {currencySymbol}
+                {docPayments.reduce((s, p) => s + p.amount, 0).toFixed(2)} &nbsp;|&nbsp;
+                Balance: {currencySymbol}
+                {(grandTotal - docPayments.reduce((s, p) => s + p.amount, 0)).toFixed(2)}
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="space-y-1.5">
+              <Label>Date</Label>
+              <Input type="date" value={newPayDate} onChange={(e) => setNewPayDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Amount</Label>
+              <Input type="number" step="0.01" min="0" value={newPayAmount || ""} onChange={(e) => setNewPayAmount(toFiniteNumber(e.target.value))} placeholder="0.00" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Method</Label>
+              <Input value={newPayMethod} onChange={(e) => setNewPayMethod(e.target.value)} placeholder="Cash, Bank, UPI..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes</Label>
+              <Input value={newPayNotes} onChange={(e) => setNewPayNotes(e.target.value)} placeholder="Optional" />
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (!newPayDate || newPayAmount <= 0) {
+                toast.error("Please enter a valid date and amount")
+                return
+              }
+              setDocPayments((prev) => [...prev, {
+                id: generateId(),
+                date: newPayDate,
+                amount: newPayAmount,
+                method: newPayMethod,
+                notes: newPayNotes,
+              }])
+              setNewPayDate("")
+              setNewPayAmount(0)
+              setNewPayMethod("")
+              setNewPayNotes("")
+              toast.success("Payment recorded")
+            }}
+          >
+            <Plus className="mr-1 h-4 w-4" /> Add Payment
+          </Button>
         </CardContent>
       </Card>
 

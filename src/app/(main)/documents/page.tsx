@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/src/components/ui/card"
 import { Input } from "@/src/components/ui/input"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
+import { Checkbox } from "@/src/components/ui/checkbox"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/src/components/ui/select"
@@ -24,15 +25,17 @@ import { formatCurrency, formatDate, formatStatus, getStatusColor } from "@/src/
 import { DocTypeLabel, type DocumentType, type DocumentStatus, DOCUMENT_TYPES, DOCUMENT_STATUSES } from "@/src/types"
 import { conversionMap } from "@/src/features/documents/doc-type-config"
 import { ConfirmDialog } from "@/src/components/shared/confirm-dialog"
-import { FileText, MoreHorizontal, Search, Copy, Trash2, Eye, Pencil } from "lucide-react"
+import { FileText, MoreHorizontal, Search, Copy, Trash2, Eye, Pencil, CheckSquare, X } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 
 export default function DocumentsPage() {
   const router = useRouter()
-  const { documents, load, filters, setFilters, remove, duplicate, convert } = useDocumentStore()
+  const { documents, load, filters, setFilters, remove, duplicate, convert, bulkUpdateStatus, bulkDelete } = useDocumentStore()
   const [initialized, setInitialized] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
 
   useEffect(() => {
     load().then(() => setInitialized(true))
@@ -43,9 +46,30 @@ export default function DocumentsPage() {
   }
 
   const filtered = useDocumentStore.getState().filteredDocuments()
+  const filteredIds = new Set(filtered.map((d) => d.id))
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length && filtered.length > 0) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map((d) => d.id)))
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
 
   const handleDelete = async (id: string) => {
     await remove(id)
+    setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n })
     toast.success("Document deleted")
   }
 
@@ -59,9 +83,53 @@ export default function DocumentsPage() {
     if (doc) toast.success(`Converted to ${DocTypeLabel[type]}`)
   }
 
+  const handleBulkStatus = async (status: DocumentStatus) => {
+    const ids = Array.from(selectedIds)
+    await bulkUpdateStatus(ids, status)
+    toast.success(`Updated ${ids.length} document${ids.length > 1 ? "s" : ""} to ${formatStatus(status)}`)
+    clearSelection()
+  }
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    await bulkDelete(ids)
+    toast.success(`Deleted ${ids.length} document${ids.length > 1 ? "s" : ""}`)
+    clearSelection()
+    setBulkDeleteConfirm(false)
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title="Documents" description="Manage your business documents" actions={[{ label: "New Document", href: "/documents/new" }]} />
+
+      {selectedIds.size > 0 && (
+        <div className="sticky top-0 z-30 flex items-center justify-between rounded-lg border bg-accent/80 backdrop-blur px-4 py-2.5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <CheckSquare className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">Change Status</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {DOCUMENT_STATUSES.map((s) => (
+                  <DropdownMenuItem key={s} onClick={() => handleBulkStatus(s)}>
+                    {formatStatus(s)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" size="sm" className="text-destructive" onClick={() => setBulkDeleteConfirm(true)}>
+              <Trash2 className="mr-1 h-4 w-4" /> Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              <X className="mr-1 h-4 w-4" /> Clear
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardContent className="pt-6">
@@ -105,13 +173,36 @@ export default function DocumentsPage() {
             </Select>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            <Input
+              type="date"
+              className="w-36 h-8 text-xs"
+              value={filters.dateFrom}
+              onChange={(e) => setFilters({ dateFrom: e.target.value })}
+              placeholder="From date"
+            />
+            <span className="text-xs text-muted-foreground">to</span>
+            <Input
+              type="date"
+              className="w-36 h-8 text-xs"
+              value={filters.dateTo}
+              onChange={(e) => setFilters({ dateTo: e.target.value })}
+              placeholder="To date"
+            />
+            {(filters.dateFrom || filters.dateTo) && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setFilters({ dateFrom: "", dateTo: "" })}>
+                Clear dates
+              </Button>
+            )}
+          </div>
+
           {filtered.length === 0 ? (
             <div className="mt-4">
               <EmptyState
                 icon={FileText}
                 title="No documents found"
-                description={filters.search || filters.status !== "all" || filters.docType !== "all" ? "Try adjusting your filters" : "Create your first document to get started"}
-                action={filters.search || filters.status !== "all" || filters.docType !== "all" ? undefined : (
+                description={filters.search || filters.status !== "all" || filters.docType !== "all" || filters.dateFrom || filters.dateTo ? "Try adjusting your filters" : "Create your first document to get started"}
+                action={filters.search || filters.status !== "all" || filters.docType !== "all" || filters.dateFrom || filters.dateTo ? undefined : (
                   <Button asChild>
                     <Link href="/documents/new">
                       Create Document
@@ -125,6 +216,12 @@ export default function DocumentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Number</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Customer</TableHead>
@@ -138,8 +235,16 @@ export default function DocumentsPage() {
                 <TableBody>
                   {filtered.map((doc) => {
                     const isOverdue = doc.status === "pending" && new Date(doc.dueDate) < new Date()
+                    const paidAmount = (doc.payments || []).reduce((s, p) => s + p.amount, 0)
+                    const isSelected = selectedIds.has(doc.id)
                     return (
-                      <TableRow key={doc.id} className="cursor-pointer" onClick={() => router.push(`/documents/${doc.id}`)}>
+                      <TableRow key={doc.id} className={isSelected ? "bg-accent/60" : "cursor-pointer"} onClick={() => router.push(`/documents/${doc.id}`)}>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(doc.id)}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium">{doc.docNumber || "—"}</TableCell>
                         <TableCell>{DocTypeLabel[doc.docType]}</TableCell>
                         <TableCell className="text-muted-foreground">
@@ -149,6 +254,11 @@ export default function DocumentsPage() {
                         <TableCell className="text-muted-foreground">{formatDate(doc.dueDate)}</TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(doc.grandTotal, doc.currencySymbol, doc.numberFormat)}
+                          {paidAmount > 0 && paidAmount < doc.grandTotal && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({formatCurrency(paidAmount, doc.currencySymbol, doc.numberFormat)} paid)
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={isOverdue ? "bg-destructive/15 text-destructive" : getStatusColor(doc.status)}>
@@ -226,6 +336,16 @@ export default function DocumentsPage() {
             setDeleteTarget(null)
           }
         }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirm}
+        onOpenChange={setBulkDeleteConfirm}
+        title="Delete selected documents"
+        description={`This will permanently delete ${selectedIds.size} document${selectedIds.size > 1 ? "s" : ""}. This cannot be undone.`}
+        confirmLabel="Delete All"
+        variant="destructive"
+        onConfirm={handleBulkDelete}
       />
     </div>
   )

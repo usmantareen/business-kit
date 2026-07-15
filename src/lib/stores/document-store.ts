@@ -1,12 +1,14 @@
 import { create } from "zustand";
 import { db } from "@/src/lib/db";
-import { type Document, type DocumentType, type DocumentStatus, type Item, type CompanyInfo, type PaymentInfo } from "@/src/types";
+import { type Document, type DocumentType, type DocumentStatus, type Item, type CompanyInfo, type PaymentInfo, type PaymentRecord } from "@/src/types";
 import { generateId, now } from "@/src/lib/formatters";
 
 interface DocumentFilters {
   search: string;
   status: DocumentStatus | "all";
   docType: DocumentType | "all";
+  dateFrom: string;
+  dateTo: string;
 }
 
 interface DocumentState {
@@ -19,17 +21,21 @@ interface DocumentState {
   remove: (id: string) => Promise<void>;
   duplicate: (id: string) => Promise<Document | null>;
   convert: (id: string, targetType: DocumentType) => Promise<Document | null>;
+  bulkUpdateStatus: (ids: string[], status: DocumentStatus) => Promise<void>;
+  bulkDelete: (ids: string[]) => Promise<void>;
   setFilters: (filters: Partial<DocumentFilters>) => void;
   filteredDocuments: () => Document[];
   getById: (id: string) => Document | undefined;
   getRecent: (limit?: number) => Document[];
+  getForCustomer: (customerId: string) => Document[];
+  getPaidAmount: (doc: Document) => number;
   computeTotals: (items: Item[]) => { subtotal: number; discountTotal: number; taxTotal: number; grandTotal: number };
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   documents: [],
   loaded: false,
-  filters: { search: "", status: "all", docType: "all" },
+  filters: { search: "", status: "all", docType: "all", dateFrom: "", dateTo: "" },
   load: async () => {
     const documents = await db.documents.getAll();
     set({ documents, loaded: true });
@@ -84,6 +90,30 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set((s) => ({ documents: [newDoc, ...s.documents] }));
     return newDoc;
   },
+  bulkUpdateStatus: async (ids, status) => {
+    const t = now();
+    const updatedDocs: Document[] = [];
+    for (const id of ids) {
+      const doc = get().documents.find((d) => d.id === id);
+      if (doc) {
+        const updated: Document = { ...doc, status, updatedAt: t };
+        await db.documents.put(updated);
+        updatedDocs.push(updated);
+      }
+    }
+    set((s) => ({
+      documents: s.documents.map((d) => {
+        const updated = updatedDocs.find((u) => u.id === d.id);
+        return updated || d;
+      }),
+    }));
+  },
+  bulkDelete: async (ids) => {
+    for (const id of ids) {
+      await db.documents.delete(id);
+    }
+    set((s) => ({ documents: s.documents.filter((d) => !ids.includes(d.id)) }));
+  },
   setFilters: (partial) => {
     set((s) => ({ filters: { ...s.filters, ...partial } }));
   },
@@ -92,6 +122,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     return documents.filter((doc) => {
       if (filters.status !== "all" && doc.status !== filters.status) return false;
       if (filters.docType !== "all" && doc.docType !== filters.docType) return false;
+      if (filters.dateFrom && doc.issueDate < filters.dateFrom) return false;
+      if (filters.dateTo && doc.issueDate > filters.dateTo) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const customer = doc.customer;
@@ -112,6 +144,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   getById: (id) => get().documents.find((d) => d.id === id),
   getRecent: (limit = 5) =>
     [...get().documents].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit),
+  getForCustomer: (customerId) =>
+    get().documents.filter((d) => d.customer?.id === customerId).sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime()),
+  getPaidAmount: (doc) => (doc.payments || []).reduce((sum, p) => sum + p.amount, 0),
   computeTotals: (items) => {
     let subtotal = 0;
     let discountTotal = 0;

@@ -91,6 +91,16 @@ export const ItemSchema = z.object({
 
 export type Item = z.infer<typeof ItemSchema>;
 
+export const PaymentRecordSchema = z.object({
+  id: z.string(),
+  date: z.string(),
+  amount: z.number().min(0.01, "Amount must be greater than 0"),
+  method: z.string().default(""),
+  notes: z.string().default(""),
+});
+
+export type PaymentRecord = z.infer<typeof PaymentRecordSchema>;
+
 export const CompanyInfoSchema = z.object({
   logo: z.string().default(""),
   companyName: z.string().default(""),
@@ -131,10 +141,13 @@ export const DocumentSchema = z.object({
   shipping: z.number().default(0),
   additionalCharges: z.number().default(0),
   grandTotal: z.number().default(0),
+  documentDiscount: z.number().default(0),
+  documentDiscountType: z.enum(["percentage", "fixed"]).default("percentage"),
   currency: z.string().default("INR"),
   currencySymbol: z.string().default("₹"),
   numberFormat: z.enum(["indian", "international"]).default("indian"),
   payment: PaymentInfoSchema.default({ method: "", details: "", upiId: "" }),
+  payments: z.array(PaymentRecordSchema).default([]),
   notes: z.string().default(""),
   terms: z.string().default(""),
   signature: z.string().default(""),

@@ -11,6 +11,7 @@ import { StatCard } from "@/src/components/shared/stat-card"
 import { EmptyState } from "@/src/components/shared/empty-state"
 import { Spinner } from "@/src/components/shared/spinner"
 import { Button } from "@/src/components/ui/button"
+import { Input } from "@/src/components/ui/input"
 import { formatCurrency } from "@/src/lib/formatters"
 import { type Document } from "@/src/types"
 import { BarChart3, TrendingUp, DollarSign, FileText, Plus } from "lucide-react"
@@ -25,6 +26,8 @@ export default function AnalyticsPage() {
   const { customers, loaded: custLoaded, load: loadCust } = useCustomerStore()
   const { settings, loaded: settingsLoaded, load: loadSettings } = useSettingsStore()
   const [init, setInit] = useState(false)
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
 
   useEffect(() => {
     Promise.all([loadDocs(), loadCust(), loadSettings()]).then(() => setInit(true))
@@ -38,10 +41,17 @@ export default function AnalyticsPage() {
     )
   }
 
-  const paid = documents.filter((d) => d.status === "paid")
-  const pending = documents.filter((d) => d.status === "pending" || d.status === "overdue")
+  const filteredDocs = documents.filter((d) => {
+    if (dateFrom && d.issueDate < dateFrom) return false
+    if (dateTo && d.issueDate > dateTo) return false
+    return true
+  })
+
+  const paid = filteredDocs.filter((d) => d.status === "paid")
+  const pending = filteredDocs.filter((d) => d.status === "pending" || d.status === "overdue")
   const totalRevenue = paid.reduce((s, d) => s + d.grandTotal, 0)
   const outstanding = pending.reduce((s, d) => s + d.grandTotal, 0)
+  const totalReceived = filteredDocs.reduce((s, d) => s + (d.payments || []).reduce((p, r) => p + r.amount, 0), 0)
   const defaultCurrency = settings?.currencies.find((c) => c.isDefault)
   const symbol = defaultCurrency?.symbol || "₹"
 
@@ -49,10 +59,32 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <PageHeader title="Analytics" description="Deep insights into your business performance" />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          type="date"
+          className="w-40 h-9 text-sm"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+        />
+        <span className="text-sm text-muted-foreground">to</span>
+        <Input
+          type="date"
+          className="w-40 h-9 text-sm"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+        />
+        {(dateFrom || dateTo) && (
+          <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo("") }}>
+            Clear
+          </Button>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard title="Total Revenue" value={formatCurrency(totalRevenue, symbol)} icon={DollarSign} description="From paid documents" />
         <StatCard title="Outstanding" value={formatCurrency(outstanding, symbol)} icon={TrendingUp} description="Pending payments" />
-        <StatCard title="Total Documents" value={documents.length} icon={FileText} />
+        <StatCard title="Received" value={formatCurrency(totalReceived, symbol)} icon={DollarSign} description="Payments recorded" />
+        <StatCard title="Documents" value={filteredDocs.length} icon={FileText} />
         <StatCard title="Customers" value={customers.length} icon={BarChart3} />
       </div>
 
@@ -63,7 +95,7 @@ export default function AnalyticsPage() {
             {paid.length === 0 ? (
               <EmptyState
                 icon={DollarSign}
-                title="No paid invoices yet"
+                title="No paid invoices"
                 description="Revenue will appear here once invoices are marked as paid."
                 action={
                   <Button asChild variant="outline" size="sm">
@@ -74,17 +106,17 @@ export default function AnalyticsPage() {
                 }
               />
             ) : (
-              <RevenueChart documents={documents} />
+              <RevenueChart documents={filteredDocs} />
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-base">Payment Status</CardTitle></CardHeader>
           <CardContent>
-            {documents.length === 0 ? (
+            {filteredDocs.length === 0 ? (
               <EmptyState
                 icon={FileText}
-                title="No documents yet"
+                title="No documents"
                 description="Create your first document to see payment status breakdown."
                 action={
                   <Button asChild variant="outline" size="sm">
@@ -95,17 +127,17 @@ export default function AnalyticsPage() {
                 }
               />
             ) : (
-              <PaymentStatusChart documents={documents} />
+              <PaymentStatusChart documents={filteredDocs} />
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-base">Documents by Type</CardTitle></CardHeader>
           <CardContent>
-            {documents.length === 0 ? (
+            {filteredDocs.length === 0 ? (
               <EmptyState
                 icon={BarChart3}
-                title="No documents yet"
+                title="No documents"
                 description="Document type distribution will appear here."
                 action={
                   <Button asChild variant="outline" size="sm">
@@ -116,14 +148,14 @@ export default function AnalyticsPage() {
                 }
               />
             ) : (
-              <DocTypeChart documents={documents} />
+              <DocTypeChart documents={filteredDocs} />
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-base">Top Customers</CardTitle></CardHeader>
           <CardContent>
-            <TopCustomers documents={documents} symbol={symbol} />
+            <TopCustomers documents={filteredDocs} symbol={symbol} />
           </CardContent>
         </Card>
       </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import type { Document } from "./shared"
-import { DocTypeLabel, formatDate, ItemRow, TotalsSection, PaymentSection, NotesSection, TermsSection, SignatureStamp } from "./shared"
+import { DocTypeLabel, formatDate, ItemRow, TotalsSection, PaymentSection, PaymentsSection, NotesSection, TermsSection, SignatureStamp } from "./shared"
 
 function ModernTemplate({ document: doc }: { document: Document }) {
   const fmt = doc.numberFormat || "indian"
@@ -91,6 +91,7 @@ function ModernTemplate({ document: doc }: { document: Document }) {
         <div className="grid grid-cols-2 gap-8 mt-8">
           <div>
             <PaymentSection doc={doc} />
+            <PaymentsSection doc={doc} />
             <NotesSection doc={doc} />
             <TermsSection doc={doc} />
           </div>

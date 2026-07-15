@@ -1,7 +1,7 @@
 "use client"
 
 import type { Document } from "./shared"
-import { DocTypeLabel, formatCurrency, formatDate, PaymentSection, NotesSection, TermsSection, SignatureStamp } from "./shared"
+import { DocTypeLabel, formatCurrency, formatDate, PaymentSection, PaymentsSection, NotesSection, TermsSection, SignatureStamp } from "./shared"
 
 function DarkItemRow({ item, index, format, currencySymbol }: { item: import("@/src/types").Item; index: number; format: "indian" | "international"; currencySymbol: string }) {
   return (
@@ -108,6 +108,7 @@ function DarkTemplate({ document: doc }: { document: Document }) {
         <div className="grid grid-cols-2 gap-8 mt-8 border-t border-gray-700 pt-6">
           <div>
             <PaymentSection doc={doc} />
+            <PaymentsSection doc={doc} />
             <NotesSection doc={doc} />
             <TermsSection doc={doc} />
           </div>

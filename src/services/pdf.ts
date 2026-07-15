@@ -261,6 +261,12 @@ export async function generatePDF(doc: Document, template: string = "minimal", o
 
     drawTotal("Subtotal", doc.subtotal || 0)
     if (doc.discountTotal > 0) drawTotal("Discount", -doc.discountTotal)
+    if (doc.documentDiscount > 0) {
+      const docDisc = doc.documentDiscountType === "percentage"
+        ? (doc.subtotal || 0) * (doc.documentDiscount / 100)
+        : doc.documentDiscount
+      drawTotal("Doc Discount", -docDisc)
+    }
     if (doc.taxTotal > 0) drawTotal("Tax", doc.taxTotal)
     if (doc.shipping > 0) drawTotal("Shipping", doc.shipping)
     if (doc.additionalCharges > 0) drawTotal("Additional Charges", doc.additionalCharges)
@@ -272,6 +278,32 @@ export async function generatePDF(doc: Document, template: string = "minimal", o
     drawLine(itemsY)
     drawLine(itemsY - 2)
     itemsY -= 20
+
+    const payments = doc.payments || []
+    if (payments.length > 0) {
+      const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
+      const balance = (doc.grandTotal || 0) - totalPaid
+      drawText("PAYMENTS RECEIVED", MARGIN, itemsY, 10, COLORS.muted, true)
+      itemsY -= 14
+      for (const p of payments) {
+        const pText = sanitizePdfText(`${p.date} ${p.method ? `· ${p.method}` : ""}`)
+        const pAmt = formatCurrency(p.amount, currencySymbol, numberFormat)
+        drawText(pText, MARGIN, itemsY, 9, COLORS.secondary)
+        drawText(pAmt, 545 - font.widthOfTextAtSize(sanitizePdfText(pAmt), 9), itemsY, 9, COLORS.primary)
+        itemsY -= 12
+      }
+      drawLine(itemsY, MARGIN, 545)
+      itemsY -= 10
+      drawText("Total Received", MARGIN, itemsY, 9, COLORS.primary, true)
+      drawText(formatCurrency(totalPaid, currencySymbol, numberFormat), 545 - boldFont.widthOfTextAtSize(sanitizePdfText(formatCurrency(totalPaid, currencySymbol, numberFormat)), 9), itemsY, 9, COLORS.primary, true)
+      itemsY -= 14
+      if (balance > 0) {
+        drawText("Balance Due", MARGIN, itemsY, 9, COLORS.primary, true)
+        drawText(formatCurrency(balance, currencySymbol, numberFormat), 545 - boldFont.widthOfTextAtSize(sanitizePdfText(formatCurrency(balance, currencySymbol, numberFormat)), 9), itemsY, 9, COLORS.primary, true)
+        itemsY -= 14
+      }
+      itemsY -= 12
+    }
 
     // Payment Info
     if (doc.payment?.method) {
