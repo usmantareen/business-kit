@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { db } from "@/src/lib/db";
-import { type Document, type DocumentType, type DocumentStatus, type Item, type CompanyInfo, type PaymentInfo, type PaymentRecord } from "@/src/types";
+import { type Document, type DocumentType, type DocumentStatus, type Item } from "@/src/types";
 import { generateId, now } from "@/src/lib/formatters";
 
 interface DocumentFilters {

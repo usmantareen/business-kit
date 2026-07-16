@@ -11,9 +11,16 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 function useCSSVar(name: string): string {
   const { theme } = useTheme()
   const [value, setValue] = useState("")
+
   useEffect(() => {
-    const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-    setValue(val || "")
+    let active = true
+    // Wait a tick for theme classes to apply
+    requestAnimationFrame(() => {
+      if (!active) return
+      const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+      setValue(val || "")
+    })
+    return () => { active = false }
   }, [theme, name])
   return value
 }
