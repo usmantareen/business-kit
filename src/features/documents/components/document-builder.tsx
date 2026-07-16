@@ -88,35 +88,52 @@ function SortableItemRow({ item, index, items, onUpdate, onDuplicate, onRemove, 
     }
   }
 
+  const [popoverOpen, setPopoverOpen] = useState(false)
+
   return (
     <div ref={setNodeRef} style={style} className={cn("grid grid-cols-[32px_1fr_80px_70px_100px_80px_80px_80px_100px_44px_44px] gap-1 items-center", items.length > 1 && "mb-1")}>
       <button type="button" className="flex items-center justify-center h-9 w-8 cursor-grab text-muted-foreground hover:text-foreground" {...attributes} {...listeners}>
         <GripVertical className="h-4 w-4" />
       </button>
 
-      <Popover>
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
-          <input
-            className={inputClass}
-            placeholder="Description"
-            value={item.description}
-            onChange={(e) => onUpdate(item.id, "description", e.target.value)}
-            onKeyDown={(e) => handleKeyDown(e, "description")}
-          />
+          <div className="relative w-full">
+            <input
+              className={inputClass}
+              placeholder="Description"
+              value={item.description}
+              onChange={(e) => {
+                onUpdate(item.id, "description", e.target.value)
+                if (products.length > 0) setPopoverOpen(true)
+              }}
+              onFocus={() => {
+                if (products.length > 0) setPopoverOpen(true)
+              }}
+              onKeyDown={(e) => handleKeyDown(e, "description")}
+            />
+          </div>
         </PopoverTrigger>
-        <PopoverContent className="p-0 w-72" align="start">
-          <Command>
-            <CommandInput placeholder="Search products..." />
+        <PopoverContent
+          className="p-0 w-72"
+          align="start"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <Command shouldFilter={false}>
             <CommandList>
-              <CommandEmpty>No products found.</CommandEmpty>
-              {products.map((p) => (
+              {products.filter(p => p.name.toLowerCase().includes((item.description || "").toLowerCase())).length === 0 ? (
+                <CommandEmpty>No products found.</CommandEmpty>
+              ) : null}
+              {products.filter(p => p.name.toLowerCase().includes((item.description || "").toLowerCase())).map((p) => (
                 <CommandItem
                   key={p.name}
+                  value={p.name}
                   onSelect={() => {
                     onUpdate(item.id, "description", p.name)
                     onUpdate(item.id, "unit", p.unit)
                     onUpdate(item.id, "price", p.price)
                     onUpdate(item.id, "tax", p.tax)
+                    setPopoverOpen(false)
                   }}
                 >
                   <Package className="mr-2 h-3 w-3 text-muted-foreground" />

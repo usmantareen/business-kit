@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 import type { Document } from "@/src/types"
 import { DocTypeLabel, CurrencySymbols } from "@/src/types"
-import { formatNumber, formatCurrency } from "@/src/lib/formatters"
+import { formatCurrency } from "@/src/lib/formatters"
 
 const PAGE_SIZES: Record<string, [number, number]> = {
   a4: [595.28, 841.89],

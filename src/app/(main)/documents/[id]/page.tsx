@@ -37,5 +37,5 @@ export default function EditDocumentPage() {
     return <div className="flex h-96 items-center justify-center"><Spinner size="lg" /></div>
   }
 
-  return <DocumentBuilderWrapper docType={docType as any} documentId={id} />
+  return <DocumentBuilderWrapper docType={docType as "invoice" | "quotation" | "estimate" | "receipt" | "purchase-order" | "credit-note" | "proforma" | "delivery-challan"} documentId={id} />
 }
